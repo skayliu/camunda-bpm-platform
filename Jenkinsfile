@@ -36,15 +36,15 @@ pipeline {
       }
       steps {
         cambpmConditionalRetry([
-          podSpec: """
+          podSpec: [
+            nodeSelector: 'cloud.google.com/gke-nodepool: agents-n1-standard-32-netssd-stable',
+            yaml: """
 apiVersion: v1
 kind: Pod
 metadata:
   labels:
     agent: ap7-ci-build-experiment
 spec:
-  nodeSelector:
-    cloud.google.com/gke-nodepool: agents-n1-standard-32-netssd-stable
   tolerations:
     - key: "agents-n1-standard-32-netssd-stable"
       operator: "Exists"
@@ -68,7 +68,7 @@ spec:
         cpu: 3000m
         memory: 60Gi
     workingDir: "/home/jenkins/agent"
-""",
+"""],
           suppressErrors: false,
           runSteps: {
             sh(label: 'GIT: Mark current directory as safe', script: "git config --global --add safe.directory \$PWD")
