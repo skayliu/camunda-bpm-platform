@@ -49,8 +49,6 @@ spec:
     - key: "agents-n1-standard-32-netssd-preempt"
       operator: "Exists"
       effect: "NoSchedule"
-  containers:
-    workingDir: "/home/jenkins/agent"
 """],
           suppressErrors: false,
           runSteps: {
