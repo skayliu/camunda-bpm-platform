@@ -37,8 +37,8 @@ pipeline {
       steps {
         cambpmConditionalRetry([
           podSpec: [
-            nodeSelector: 'cloud.google.com/gke-nodepool: agents-n1-standard-32-netssd-stable',
-            yaml: """
+            cpu: 32,
+            yaml:"""
 apiVersion: v1
 kind: Pod
 metadata:
@@ -46,27 +46,10 @@ metadata:
     agent: ap7-ci-build-experiment
 spec:
   tolerations:
-    - key: "agents-n1-standard-32-netssd-stable"
+    - key: "agents-n1-standard-32-netssd-preempt"
       operator: "Exists"
       effect: "NoSchedule"
   containers:
-  - name: maven
-    image: maven:3.8.7-eclipse-temurin-17
-    tty: true
-    command:
-      - sleep
-    args:
-      - 99d
-    env:
-      - name: TZ
-        value: Europe/Berlin
-    resources:
-      limits:
-        cpu: 3000m
-        memory: 60Gi
-      requests:
-        cpu: 3000m
-        memory: 60Gi
     workingDir: "/home/jenkins/agent"
 """],
           suppressErrors: false,
