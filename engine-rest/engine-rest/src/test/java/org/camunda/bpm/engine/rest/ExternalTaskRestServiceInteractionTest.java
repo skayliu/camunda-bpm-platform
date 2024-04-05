@@ -69,6 +69,7 @@ import org.camunda.bpm.engine.rest.dto.SortingDto;
 import org.camunda.bpm.engine.rest.dto.externaltask.ExternalTaskQueryDto;
 import org.camunda.bpm.engine.rest.dto.history.HistoricProcessInstanceQueryDto;
 import org.camunda.bpm.engine.rest.dto.runtime.ProcessInstanceQueryDto;
+import org.camunda.bpm.engine.rest.exception.InvalidRequestException;
 import org.camunda.bpm.engine.rest.exception.RestException;
 import org.camunda.bpm.engine.rest.helper.EqualsVariableMap;
 import org.camunda.bpm.engine.rest.helper.MockProvider;
@@ -80,6 +81,7 @@ import org.camunda.bpm.engine.rest.util.VariablesBuilder;
 import org.camunda.bpm.engine.rest.util.container.TestContainerRule;
 import org.camunda.bpm.engine.runtime.ProcessInstanceQuery;
 import org.camunda.bpm.engine.variable.type.ValueType;
+import org.hamcrest.Matchers;
 import org.junit.Before;
 import org.junit.ClassRule;
 import org.junit.Test;
@@ -400,6 +402,54 @@ public class ExternalTaskRestServiceInteractionTest extends AbstractRestServiceT
   }
 
   @Test
+  public void testFetchAndLockWithCreateTimeDescCaseInsensitive() {
+    // given
+    when(fetchTopicBuilder.execute()).thenReturn(Arrays.asList(lockedExternalTaskMock));
+
+    Map<String, Object> parameters = new HashMap<>();
+    parameters.put("maxTasks", 5);
+    parameters.put("workerId", "aWorkerId");
+    parameters.put("usePriority", false);
+    parameters.put("sorting", List.of(create("createTime", "Desc")));
+
+    Map<String, Object> topicParameter = new HashMap<>();
+    topicParameter.put("topicName", "aTopicName");
+    topicParameter.put("businessKey", EXAMPLE_BUSINESS_KEY);
+    topicParameter.put("lockDuration", 12354L);
+    topicParameter.put("variables", Arrays.asList(EXAMPLE_VARIABLE_INSTANCE_NAME));
+
+    Map<String, Object> variableValueParameter = new HashMap<>();
+    variableValueParameter.put(EXAMPLE_VARIABLE_INSTANCE_NAME, EXAMPLE_PRIMITIVE_VARIABLE_VALUE.getValue());
+    topicParameter.put("processVariables", variableValueParameter);
+
+    parameters.put("topics", Arrays.asList(topicParameter));
+
+    // when
+    executePost(parameters);
+
+    InOrder inOrder = inOrder(fetchAndLockBuilder, fetchTopicBuilder, externalTaskService);
+
+    inOrder.verify(externalTaskService).fetchAndLock();
+
+    inOrder.verify(fetchAndLockBuilder).workerId("aWorkerId");
+    inOrder.verify(fetchAndLockBuilder).maxTasks(5);
+    inOrder.verify(fetchAndLockBuilder).usePriority(false);
+
+    // then
+    inOrder.verify(fetchAndLockBuilder).orderByCreateTime();
+    inOrder.verify(fetchAndLockBuilder).desc();
+
+    inOrder.verify(fetchAndLockBuilder).subscribe();
+    inOrder.verify(fetchTopicBuilder).topic("aTopicName", 12354L);
+    inOrder.verify(fetchTopicBuilder).businessKey(EXAMPLE_BUSINESS_KEY);
+    inOrder.verify(fetchTopicBuilder).variables(Arrays.asList(EXAMPLE_VARIABLE_INSTANCE_NAME));
+    inOrder.verify(fetchTopicBuilder).processInstanceVariableEquals(variableValueParameter);
+    inOrder.verify(fetchTopicBuilder).execute();
+
+    verifyNoMoreInteractions(fetchAndLockBuilder, fetchTopicBuilder, externalTaskService);
+  }
+
+  @Test
   public void testFetchAndLockWithCreateTimeWithoutOrder() {
     // given
     when(fetchTopicBuilder.execute()).thenReturn(Arrays.asList(lockedExternalTaskMock));
@@ -445,6 +495,62 @@ public class ExternalTaskRestServiceInteractionTest extends AbstractRestServiceT
     inOrder.verify(fetchTopicBuilder).execute();
 
     verifyNoMoreInteractions(fetchAndLockBuilder, fetchTopicBuilder, externalTaskService);
+  }
+
+  @Test
+  public void testFetchAndLockWithCreateTimeWithInvalidOrder() {
+    // given
+    when(fetchTopicBuilder.execute()).thenReturn(Arrays.asList(lockedExternalTaskMock));
+
+    Map<String, Object> parameters = new HashMap<>();
+    parameters.put("maxTasks", 5);
+    parameters.put("workerId", "aWorkerId");
+    parameters.put("usePriority", false);
+    parameters.put("sorting", List.of(create("createTime", "invalid")));
+
+    // when
+    given()
+            .contentType(POST_JSON_CONTENT_TYPE)
+            .body(parameters)
+            .header("accept", MediaType.APPLICATION_JSON)
+            .then().expect().statusCode(Status.BAD_REQUEST.getStatusCode())
+            .body("type", Matchers.equalTo(InvalidRequestException.class.getSimpleName()))
+            .body("message", Matchers.equalTo("Cannot set query sortOrder parameter to value invalid"))
+            .when().post(FETCH_EXTERNAL_TASK_URL);
+
+    // then
+    InOrder inOrder = inOrder(fetchAndLockBuilder, fetchTopicBuilder, externalTaskService);
+    inOrder.verify(externalTaskService).fetchAndLock();
+    inOrder.verify(fetchAndLockBuilder).workerId("aWorkerId");
+    inOrder.verify(fetchAndLockBuilder).maxTasks(5);
+    inOrder.verify(fetchAndLockBuilder).usePriority(false);
+    inOrder.verify(fetchAndLockBuilder).orderByCreateTime();
+    inOrder.verify(fetchAndLockBuilder, never()).desc();
+    inOrder.verify(fetchAndLockBuilder, never()).asc();
+
+    verifyNoMoreInteractions(fetchAndLockBuilder, fetchTopicBuilder, externalTaskService);
+  }
+
+  @Test
+  public void testFetchAndLockWithCreateTimeWithInvalidSortByField() {
+    // given
+    Map<String, Object> parameters = new HashMap<>();
+    parameters.put("maxTasks", 5);
+    parameters.put("workerId", "aWorkerId");
+    parameters.put("usePriority", false);
+    parameters.put("sorting", List.of(create("invalid", "desc")));
+
+    // when
+    given().contentType(POST_JSON_CONTENT_TYPE)
+            .body(parameters)
+            .then().expect().statusCode(Status.BAD_REQUEST.getStatusCode()).contentType(ContentType.JSON)
+            .body("type", Matchers.equalTo(InvalidRequestException.class.getSimpleName()))
+            .body("message", Matchers.equalTo("Cannot set query sortBy parameter to value invalid"))
+            .when().post(FETCH_EXTERNAL_TASK_URL);
+
+    // then
+    InOrder inOrder = inOrder(fetchAndLockBuilder, fetchTopicBuilder, externalTaskService);
+    inOrder.verify(fetchAndLockBuilder, never()).orderByCreateTime();
   }
 
   @Test

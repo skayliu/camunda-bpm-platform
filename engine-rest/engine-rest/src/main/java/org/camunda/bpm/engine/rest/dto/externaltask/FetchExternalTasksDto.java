@@ -22,7 +22,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.Consumer;
 import org.camunda.bpm.engine.ExternalTaskService;
 import org.camunda.bpm.engine.ProcessEngine;
@@ -30,6 +29,9 @@ import org.camunda.bpm.engine.externaltask.ExternalTaskQueryTopicBuilder;
 import org.camunda.bpm.engine.externaltask.FetchAndLockBuilder;
 import org.camunda.bpm.engine.impl.util.CollectionUtil;
 import org.camunda.bpm.engine.rest.dto.SortingDto;
+import org.camunda.bpm.engine.rest.exception.InvalidRequestException;
+
+import javax.ws.rs.core.Response;
 
 /**
  * @author Thorben Lindhauer
@@ -318,21 +320,24 @@ public class FetchExternalTasksDto {
      * Applies the sorting field mappings to the builder and returns it.
      */
     protected FetchAndLockBuilder getBuilderWithSortConfigs() {
-      sorting.forEach(dto -> {
-        fieldMappingKey(dto).ifPresent(key -> FIELD_MAPPINGS.get(key).accept(builder));
-        orderMappingKey(dto).ifPresent(key -> ORDER_MAPPINGS.get(key).accept(builder));
-      });
+      for (SortingDto dto : sorting) {
+        String sortBy = dto.getSortBy();
+        if (FIELD_MAPPINGS.containsKey(sortBy)) {
+          FIELD_MAPPINGS.get(sortBy).accept(builder);
+        } else {
+          throw new InvalidRequestException(Response.Status.BAD_REQUEST, "Cannot set query sortBy parameter to value " + sortBy);
+        }
 
+        String sortOrder = dto.getSortOrder() != null ? dto.getSortOrder().toLowerCase() : null;
+        if (sortOrder != null) {
+          if (ORDER_MAPPINGS.containsKey(sortOrder)) {
+            ORDER_MAPPINGS.get(sortOrder).accept(builder);
+          } else {
+            throw new InvalidRequestException(Response.Status.BAD_REQUEST, "Cannot set query sortOrder parameter to value " + sortOrder);
+          }
+        }
+      }
       return builder;
     }
-
-    protected Optional<String> fieldMappingKey(SortingDto dto) {
-      return Optional.ofNullable(dto.getSortBy());
-    }
-
-    protected Optional<String> orderMappingKey(SortingDto dto) {
-      return Optional.ofNullable(dto.getSortOrder());
-    }
   }
-
 }
